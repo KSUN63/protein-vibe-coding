@@ -1,0 +1,67 @@
+name: protein-vibe
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.10
+  - pip
+  
+  # Core scientific computing
+  - numpy
+  - scipy
+  - pandas
+  - requests
+  
+  # Bioinformatics essentials
+  - biopython
+  - biotite  # Modern Python library for computational biology
+  
+  # Plotting and visualization
+  - matplotlib
+  - seaborn
+  - plotly
+  - bokeh
+  - altair
+  
+  # Jupyter ecosystem
+  - jupyter
+  - jupyterlab
+  - notebook
+  - ipywidgets
+  
+  # Data processing and utilities
+  - scikit-learn
+  - networkx
+  - tqdm
+  - click
+  - pyyaml
+  - toml
+  
+  # File format support
+  - openpyxl  # Excel files
+  - xlrd      # Excel files
+  - h5py      # HDF5 files
+  - pytables  # HDF5 tables
+  
+  # Web scraping and APIs
+  - beautifulsoup4
+  - lxml
+  - urllib3
+  
+  # Development tools
+  - black     # Code formatting
+  - flake8    # Linting
+  - pytest    # Testing
+  - mypy      # Type checking
+  
+  # Additional useful packages
+  - joblib    # Parallel processing
+  - numba     # JIT compilation
+  - cython    # C extensions
+  
+  # Protein-specific tools (via pip)
+  - pip:
+    - mdanalysis       # Molecular dynamics analysis
+    - rdkit            # Cheminformatics (if working with small molecules too)
