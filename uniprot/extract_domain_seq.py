@@ -104,7 +104,7 @@ def extract_domain_sequence(uniprot_id: str, domain_name: Optional[str] = None) 
         return None
 
 
-def write_fasta_file(uniprot_id: str, sequence: str, output_file: Optional[str] = None, mode: str = 'w') -> str:
+def write_fasta_file(uniprot_id: str, sequence: str, output_file: Optional[str] = None, domain_label: Optional[str] = None, mode: str = 'w') -> str:
     """
     Write a sequence to a FASTA format file.
     
@@ -112,6 +112,8 @@ def write_fasta_file(uniprot_id: str, sequence: str, output_file: Optional[str] 
         uniprot_id (str): The UniProt ID to use as the sequence annotation.
         sequence (str): The sequence to write.
         output_file (str, optional): The path to the output file. If None, a default name will be used.
+        domain_label (str, optional): The domain label to include in the header. If provided, 
+                                     the header will be >uniprot_id_domain_label.
         mode (str): File opening mode ('w' for write, 'a' for append).
     
     Returns:
@@ -121,7 +123,15 @@ def write_fasta_file(uniprot_id: str, sequence: str, output_file: Optional[str] 
         output_file = f"{uniprot_id}_domain.fasta"
     
     with open(output_file, mode) as f:
-        f.write(f">{uniprot_id}\n")
+        # Format header based on whether domain_label is provided
+        if domain_label:
+            # Clean domain label for use in FASTA header (remove spaces, special chars)
+            clean_label = domain_label.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "")
+            header = f">{uniprot_id}_{clean_label}"
+        else:
+            header = f">{uniprot_id}"
+        
+        f.write(f"{header}\n")
         
         # Write sequence in lines of 60 characters (standard FASTA format)
         for i in range(0, len(sequence), 60):
@@ -130,7 +140,7 @@ def write_fasta_file(uniprot_id: str, sequence: str, output_file: Optional[str] 
     return output_file
 
 
-def append_to_fasta_file(uniprot_id: str, sequence: str, output_file: str) -> str:
+def append_to_fasta_file(uniprot_id: str, sequence: str, output_file: str, domain_label: Optional[str] = None) -> str:
     """
     Append a sequence to an existing FASTA file.
     
@@ -138,28 +148,30 @@ def append_to_fasta_file(uniprot_id: str, sequence: str, output_file: str) -> st
         uniprot_id (str): The UniProt ID to use as the sequence annotation.
         sequence (str): The sequence to write.
         output_file (str): The path to the output file.
+        domain_label (str, optional): The domain label to include in the header.
     
     Returns:
         str: The path to the updated FASTA file.
     """
-    return write_fasta_file(uniprot_id, sequence, output_file, mode='a')
+    return write_fasta_file(uniprot_id, sequence, output_file, domain_label, mode='a')
 
 
-def get_kinase_domain_sequence(uniprot_id: str, output_file: Optional[str] = None) -> Optional[str]:
+def get_kinase_domain_sequences(uniprot_id: str, output_file: Optional[str] = None) -> Dict[str, str]:
     """
-    Extract specifically the kinase domain sequence from a protein.
+    Extract all kinase domain sequences from a protein.
     
     Args:
         uniprot_id (str): The UniProt ID of the protein.
-        output_file (str, optional): If provided, write the sequence to this file in FASTA format.
+        output_file (str, optional): If provided, write the sequences to this file in FASTA format.
     
     Returns:
-        str or None: The sequence of the kinase domain if found, None otherwise.
+        Dict[str, str]: Dictionary mapping domain names to their sequences.
+                       Empty dictionary if no kinase domains are found.
     
     Example:
-        >>> kinase_seq = get_kinase_domain_sequence("P00533")
+        >>> kinase_domains = get_kinase_domain_sequences("P00533")
         >>> # Write to FASTA file
-        >>> kinase_seq = get_kinase_domain_sequence("P00533", "P00533_kinase.fasta")
+        >>> kinase_domains = get_kinase_domain_sequences("P00533", "P00533_kinase.fasta")
     """
     # Common names for kinase domains in UniProt
     kinase_domain_names = [
@@ -171,29 +183,61 @@ def get_kinase_domain_sequence(uniprot_id: str, output_file: Optional[str] = Non
     ]
     
     # Get all domains
-    domains = extract_domain_sequence(uniprot_id)
+    all_domains = extract_domain_sequence(uniprot_id)
     
-    if not domains:
+    if not all_domains:
+        return {}
+    
+    # Find all kinase domains
+    kinase_domains = {}
+    
+    for domain_name, sequence in all_domains.items():
+        for kinase_name in kinase_domain_names:
+            if kinase_name.lower() in domain_name.lower():
+                kinase_domains[domain_name] = sequence
+                break
+    
+    # Write to FASTA file if requested
+    if output_file is not None and kinase_domains:
+        first_domain = True
+        for domain_name, sequence in kinase_domains.items():
+            if first_domain:
+                write_fasta_file(uniprot_id, sequence, output_file, domain_name)
+                first_domain = False
+            else:
+                append_to_fasta_file(uniprot_id, sequence, output_file, domain_name)
+    
+    # If no specific kinase domain found, print available domains
+    if not kinase_domains:
+        print(f"No kinase domains found for {uniprot_id}. Available domains:")
+        for domain_name in all_domains.keys():
+            print(f"  - {domain_name}")
+    
+    return kinase_domains
+
+
+def get_kinase_domain_sequence(uniprot_id: str, output_file: Optional[str] = None) -> Optional[str]:
+    """
+    Extract the first kinase domain sequence from a protein (for backward compatibility).
+    
+    Args:
+        uniprot_id (str): The UniProt ID of the protein.
+        output_file (str, optional): If provided, write the sequence to this file in FASTA format.
+    
+    Returns:
+        str or None: The sequence of the first kinase domain if found, None otherwise.
+    """
+    kinase_domains = get_kinase_domain_sequences(uniprot_id, output_file)
+    
+    if not kinase_domains:
         return None
     
-    # Try to find a kinase domain
-    for name in kinase_domain_names:
-        for domain_name, sequence in domains.items():
-            if name.lower() in domain_name.lower():
-                # Write to FASTA file if requested
-                if output_file is not None:
-                    write_fasta_file(uniprot_id, sequence, output_file)
-                return sequence
-    
-    # If no specific kinase domain found, return all domains
-    print(f"No specific kinase domain found for {uniprot_id}. Available domains:")
-    for domain_name in domains.keys():
-        print(f"  - {domain_name}")
-    
-    return None
+    # Return the first kinase domain found
+    domain_name = next(iter(kinase_domains))
+    return kinase_domains[domain_name]
 
 
-def process_uniprot_file(input_file: str, output_file: str, default_domain: str = "kinase") -> Dict[str, str]:
+def process_uniprot_file(input_file: str, output_file: str, default_domain: str = "kinase") -> Dict[str, Dict[str, str]]:
     """
     Process a file containing UniProt IDs and domain names.
     
@@ -208,11 +252,12 @@ def process_uniprot_file(input_file: str, output_file: str, default_domain: str 
         default_domain (str): Default domain to use if not specified.
         
     Returns:
-        Dict[str, str]: Dictionary mapping UniProt IDs to their extracted sequences.
+        Dict[str, Dict[str, str]]: Dictionary mapping UniProt IDs to their domain sequences.
     """
     results = {}
     success_count = 0
     failure_count = 0
+    first_entry = True
     
     # Check if input file exists
     if not os.path.exists(input_file):
@@ -236,29 +281,46 @@ def process_uniprot_file(input_file: str, output_file: str, default_domain: str 
         
         print(f"Processing {i+1}/{len(lines)}: {uniprot_id} (domain: {domain_name})")
         
-        # Extract sequence
-        sequence = None
+        # Extract sequences
         if domain_name.lower() == "kinase":
-            sequence = get_kinase_domain_sequence(uniprot_id)
-        else:
-            sequence = extract_domain_sequence(uniprot_id, domain_name)
-        
-        # If sequence found, write to output file
-        if sequence:
-            if i == 0:
-                # First entry, create new file
-                write_fasta_file(uniprot_id, sequence, output_file)
-            else:
-                # Append to existing file
-                append_to_fasta_file(uniprot_id, sequence, output_file)
+            # Get all kinase domains
+            domains = get_kinase_domain_sequences(uniprot_id)
             
-            results[uniprot_id] = sequence
-            success_count += 1
+            if domains:
+                # Write all domains to output file
+                for domain_label, sequence in domains.items():
+                    if first_entry:
+                        write_fasta_file(uniprot_id, sequence, output_file, domain_label)
+                        first_entry = False
+                    else:
+                        append_to_fasta_file(uniprot_id, sequence, output_file, domain_label)
+                
+                results[uniprot_id] = domains
+                success_count += 1
+            else:
+                print(f"  Warning: No kinase domains found for {uniprot_id}")
+                failure_count += 1
         else:
-            print(f"  Warning: No sequence found for {uniprot_id} with domain '{domain_name}'")
-            failure_count += 1
+            # Get specific domain
+            sequence = extract_domain_sequence(uniprot_id, domain_name)
+            
+            if sequence:
+                if first_entry:
+                    write_fasta_file(uniprot_id, sequence, output_file, domain_name)
+                    first_entry = False
+                else:
+                    append_to_fasta_file(uniprot_id, sequence, output_file, domain_name)
+                
+                results[uniprot_id] = {domain_name: sequence}
+                success_count += 1
+            else:
+                print(f"  Warning: No sequence found for {uniprot_id} with domain '{domain_name}'")
+                failure_count += 1
     
-    print(f"\nProcessing complete: {success_count} sequences extracted, {failure_count} failed")
+    # Count total domains extracted
+    total_domains = sum(len(domains) for domains in results.values())
+    
+    print(f"\nProcessing complete: {success_count} proteins processed, {total_domains} domains extracted, {failure_count} failed")
     print(f"Results written to: {output_file}")
     
     return results
@@ -322,23 +384,24 @@ if __name__ == "__main__":
             else:
                 print(f"No domains found for {args.uniprot_id}")
         elif args.domain.lower() == "kinase":
-            # Get kinase domain (default)
-            result = get_kinase_domain_sequence(args.uniprot_id, args.output)
-            if result:
+            # Get all kinase domains
+            domains = get_kinase_domain_sequences(args.uniprot_id, args.output)
+            if domains:
                 output_file = args.output if args.output else f"{args.uniprot_id}_domain.fasta"
-                print(f"Kinase domain sequence for {args.uniprot_id} written to {output_file}")
-                print(f"Sequence: {result[:50]}..." if len(result) > 50 else f"Sequence: {result}")
+                print(f"Found {len(domains)} kinase domains for {args.uniprot_id}, written to {output_file}")
+                for domain_name, sequence in domains.items():
+                    print(f"  - {domain_name}: {sequence[:50]}..." if len(sequence) > 50 else f"  - {domain_name}: {sequence}")
             else:
-                print(f"No kinase domain found for {args.uniprot_id}")
+                print(f"No kinase domains found for {args.uniprot_id}")
         else:
             # Get specific domain
             result = extract_domain_sequence(args.uniprot_id, args.domain)
             if result:
                 if args.output:
-                    output_file = write_fasta_file(args.uniprot_id, result, args.output)
+                    output_file = write_fasta_file(args.uniprot_id, result, args.output, args.domain)
                     print(f"Domain '{args.domain}' sequence written to {output_file}")
                 else:
-                    output_file = write_fasta_file(args.uniprot_id, result)
+                    output_file = write_fasta_file(args.uniprot_id, result, domain_label=args.domain)
                     print(f"Domain '{args.domain}' sequence written to {output_file}")
                 print(f"Sequence: {result[:50]}..." if len(result) > 50 else f"Sequence: {result}")
             else:
@@ -347,7 +410,6 @@ if __name__ == "__main__":
     elif args.mode == "batch":
         # Process batch file
         process_uniprot_file(args.input_file, args.output, args.default_domain)
-
 
 ## Example usage
 # python extract_domain_seq.py single P00533 --domain "protein kinase" --output P00533_kinase.fasta
